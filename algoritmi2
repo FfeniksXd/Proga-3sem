@@ -1,0 +1,296 @@
+#include <iostream>
+#include <vector>
+#include <chrono>
+#include <iomanip>
+#include <random>
+#include <stack>
+
+using namespace std;
+
+// Структура для хранения статистики
+struct Stats {
+    long long comparisons = 0;
+    long long swaps = 0;
+    double time_ms = 0.0;
+};
+
+// Вспомогательная функция для вывода массива
+void printArray(const vector<int>& arr) {
+    for (int x : arr) cout << x << " ";
+    cout << endl;
+}
+
+// --- СОРТИРОВКА ШЕЛЛА ---
+void shellSort(vector<int>& arr, Stats& stats, bool debug) {
+    int n = arr.size();
+    for (int gap = n / 2; gap > 0; gap /= 2) {
+        for (int i = gap; i < n; i += 1) {
+            int temp = arr[i];
+            int j;
+
+            stats.swaps++; // Запоминание temp (пересылка)
+
+            // Сравнение и перестановка
+            for (j = i; j >= gap; j -= gap) {
+                stats.comparisons++;
+                if (arr[j - gap] > temp) {
+                    arr[j] = arr[j - gap];
+                    stats.swaps++; // Пересылка
+                }
+                else {
+                    break;
+                }
+            }
+            arr[j] = temp;
+            stats.swaps++; // Возврат temp (пересылка)
+
+            if (debug) {
+                cout << "Gap=" << gap << ", i=" << i << ": ";
+                printArray(arr);
+            }
+        }
+    }
+}
+
+// --- БЫСТРАЯ СОРТИРОВКА (Опорный = Последний элемент) ---
+int partitionLast(vector<int>& arr, int low, int high, Stats& stats) {
+    int pivot = arr[high];
+    int i = (low - 1);
+    stats.swaps++; // копирование pivot (условно)
+
+    for (int j = low; j <= high - 1; j++) {
+        stats.comparisons++;
+        if (arr[j] < pivot) {
+            i++;
+            swap(arr[i], arr[j]);
+            stats.swaps += 3; // swap обычно 3 операции присваивания
+        }
+    }
+    swap(arr[i + 1], arr[high]);
+    stats.swaps += 3;
+    return (i + 1);
+}
+
+// ============================================================================
+// РЕКУРСИВНАЯ ВЕРСИЯ БЫСТРОЙ СОРТИРОВКИ (ЗАКОММЕНТИРОВАНА)
+// ============================================================================
+/*
+void quickSortLastPivot(vector<int>& arr, int low, int high, Stats& stats, bool debug) {
+    if (low < high) {
+        int pi = partitionLast(arr, low, high, stats);
+
+        if (debug) {
+            cout << "PivotIndex=" << pi << " (Val=" << arr[pi] << "): ";
+            printArray(arr);
+        }
+
+        quickSortLastPivot(arr, low, pi - 1, stats, debug);
+        quickSortLastPivot(arr, pi + 1, high, stats, debug);
+    }
+}
+*/
+
+// ============================================================================
+// ИТЕРАТИВНАЯ ВЕРСИЯ БЫСТРОЙ СОРТИРОВКИ С ПОСЛЕДНИМ ОПОРНЫМ ЭЛЕМЕНТОМ
+// ============================================================================
+void quickSortLastPivotIterative(vector<int>& arr, int low, int high, Stats& stats, bool debug) {
+    stack<pair<int, int>> stk;
+    stk.push(make_pair(low, high));
+    
+    while (!stk.empty()) {
+        pair<int, int> bounds = stk.top();
+        stk.pop();
+        int l = bounds.first;
+        int h = bounds.second;
+        
+        if (l < h) {
+            int pi = partitionLast(arr, l, h, stats);
+            
+            if (debug) {
+                cout << "PivotIndex=" << pi << " (Val=" << arr[pi] << "): ";
+                printArray(arr);
+            }
+            
+            // Сначала добавляем левую часть, потом правую
+            stk.push(make_pair(pi + 1, h));
+            stk.push(make_pair(l, pi - 1));
+        }
+    }
+}
+
+// --- БЫСТРАЯ СОРТИРОВКА (Схема Хоара, обычно опорный по центру) ---
+void quickSortHoare(vector<int>& arr, int low, int high, Stats& stats, bool debug) {
+    if (low >= high) return;
+
+    int mid = low + (high - low) / 2;
+    int pivot = arr[mid];
+
+    int i = low;
+    int j = high;
+
+    while (i <= j) {
+        while (arr[i] < pivot) {
+            stats.comparisons++;
+            i++;
+        }
+        stats.comparisons++; // Последнее сравнение, которое вывело из цикла
+
+        while (arr[j] > pivot) {
+            stats.comparisons++;
+            j--;
+        }
+        stats.comparisons++; // Последнее сравнение, которое вывело из цикла
+
+        if (i <= j) {
+            swap(arr[i], arr[j]);
+            stats.swaps += 3;
+            i++;
+            j--;
+        }
+    }
+
+    if (debug) {
+        cout << "Hoare Partition [" << low << "-" << high << "]: ";
+        printArray(arr);
+    }
+
+    if (low < j) quickSortHoare(arr, low, j, stats, debug);
+    if (i < high) quickSortHoare(arr, i, high, stats, debug);
+}
+
+// --- ГЕНЕРАТОРЫ МАССИВОВ ---
+vector<int> generateRandom(int n) {
+    vector<int> arr(n);
+    for (int i = 0; i < n; ++i) arr[i] = rand() % 10000;
+    return arr;
+}
+
+vector<int> generateSorted(int n) {
+    vector<int> arr(n);
+    for (int i = 0; i < n; ++i) arr[i] = i;
+    return arr;
+}
+
+vector<int> generateReverse(int n) {
+    vector<int> arr(n);
+    for (int i = 0; i < n; ++i) arr[i] = n - i;
+    return arr;
+}
+
+// --- ФУНКЦИЯ ТЕСТИРОВАНИЯ (Этап 2) ---
+void runTest(int n, string type) {
+    vector<int> original;
+    if (type == "Random") original = generateRandom(n);
+    else if (type == "Sorted") original = generateSorted(n);
+    else if (type == "Reverse") original = generateReverse(n);
+
+    // Таблица для конкретного N и типа
+    cout << "\n--- Размер: " << n << ", Тип: " << type << " ---\n";
+    cout << "Алгоритм                 Сравнения     Пересылки      Время (мс)" << endl;
+
+    // 1. Shell Sort
+    {
+        vector<int> arr = original;
+        Stats stats;
+        auto start = chrono::high_resolution_clock::now();
+        shellSort(arr, stats, false);
+        auto end = chrono::high_resolution_clock::now();
+        stats.time_ms = chrono::duration<double, milli>(end - start).count();
+
+        cout << left << setw(25) << "Shell Sort"
+            << setw(15) << stats.comparisons
+            << setw(15) << stats.swaps
+            << setw(15) << fixed << setprecision(3) << stats.time_ms << endl;
+    }
+
+    // 2. Quick Sort (Last Element) - ИТЕРАТИВНАЯ ВЕРСИЯ
+    // Теперь можно тестировать все случаи без риска переполнения стека
+    {
+        vector<int> arr = original;
+        Stats stats;
+        auto start = chrono::high_resolution_clock::now();
+        quickSortLastPivotIterative(arr, 0, n - 1, stats, false);
+        auto end = chrono::high_resolution_clock::now();
+        stats.time_ms = chrono::duration<double, milli>(end - start).count();
+
+        cout << left << setw(25) << "Quick (Last Pivot)"
+            << setw(15) << stats.comparisons
+            << setw(15) << stats.swaps
+            << setw(15) << fixed << setprecision(3) << stats.time_ms << endl;
+    }
+
+    // 3. Quick Sort (Hoare) - рекурсивная версия
+    {
+        vector<int> arr = original;
+        Stats stats;
+        auto start = chrono::high_resolution_clock::now();
+        quickSortHoare(arr, 0, n - 1, stats, false);
+        auto end = chrono::high_resolution_clock::now();
+        stats.time_ms = chrono::duration<double, milli>(end - start).count();
+
+        cout << left << setw(25) << "Quick (Hoare)"
+            << setw(15) << stats.comparisons
+            << setw(15) << stats.swaps
+            << setw(15) << fixed << setprecision(3) << stats.time_ms << endl;
+    }
+}
+
+int main() {
+    setlocale(LC_ALL, "ru");
+    srand(time(0));
+
+    // ==========================================
+    // ЭТАП 1: Промежуточные результаты для N=15
+    // ==========================================
+    cout << "=== ЭТАП 1: Исследование на массиве N=15 ===\n" << endl;
+    int n_small = 15;
+    vector<int> small_arr = generateRandom(n_small);
+
+    cout << "Исходный массив: ";
+    printArray(small_arr);
+    cout << endl;
+
+    // 1. Shell
+    {
+        cout << ">>> Сортировка Шелла (пошагово):" << endl;
+        vector<int> arr = small_arr;
+        Stats s;
+        shellSort(arr, s, true);
+        cout << "Итог Шелла: Сравнений=" << s.comparisons << ", Пересылок=" << s.swaps << "\n\n";
+    }
+
+    // 2. Quick (Last Pivot) - ИТЕРАТИВНАЯ ВЕРСИЯ
+    {
+        cout << ">>> Быстрая сортировка (Опорный = Последний) - итеративная версия:" << endl;
+        vector<int> arr = small_arr;
+        Stats s;
+        quickSortLastPivotIterative(arr, 0, n_small - 1, s, true);
+        cout << "Итог Quick(Last): Сравнений=" << s.comparisons << ", Пересылок=" << s.swaps << "\n\n";
+    }
+
+    // 3. Quick (Hoare)
+    {
+        cout << ">>> Быстрая сортировка (Схема Хоара):" << endl;
+        vector<int> arr = small_arr;
+        Stats s;
+        quickSortHoare(arr, 0, n_small - 1, s, true);
+        cout << "Итог Quick(Hoare): Сравнений=" << s.comparisons << ", Пересылок=" << s.swaps << "\n\n";
+    }
+
+    // ==========================================
+    // ЭТАП 2: Сравнение производительности
+    // ==========================================
+    cout << "\n=== ЭТАП 2: Большие массивы и статистика ===\n";
+
+    int sizes[] = { 500, 1000, 10000, 50000, 100000 };
+    string types[] = { "Random", "Sorted", "Reverse" };
+
+    for (int n : sizes) {
+        for (const string& type : types) {
+            runTest(n, type);
+        }
+        cout << "---------------------------------------------------------" << endl;
+    }
+
+    return 0;
+}
